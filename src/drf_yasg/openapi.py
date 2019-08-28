@@ -1,3 +1,5 @@
+from typing import Dict, Optional, List, Tuple, Union, Any, Type, Callable
+
 import six
 
 import collections
@@ -9,6 +11,7 @@ from coreapi.compat import urlparse
 from django.urls import get_script_prefix
 from django.utils.functional import Promise
 from inflection import camelize
+from rest_framework import serializers
 
 from .utils import dict_has_ordered_keys, filter_none, force_real_str
 
@@ -49,16 +52,16 @@ FORMAT_UUID = "uuid"  #:
 FORMAT_SLUG = "slug"  #:
 FORMAT_DECIMAL = "decimal"
 
-IN_BODY = 'body'  #:
-IN_PATH = 'path'  #:
-IN_QUERY = 'query'  #:
-IN_FORM = 'formData'  #:
-IN_HEADER = 'header'  #:
+IN_BODY = "body"  #:
+IN_PATH = "path"  #:
+IN_QUERY = "query"  #:
+IN_FORM = "formData"  #:
+IN_HEADER = "header"  #:
 
-SCHEMA_DEFINITIONS = 'definitions'  #:
+SCHEMA_DEFINITIONS = "definitions"  #:
 
 
-def make_swagger_name(attribute_name):
+def make_swagger_name(attribute_name: str) -> str:
     """
     Convert a python variable name into a Swagger spec attribute name.
 
@@ -70,11 +73,11 @@ def make_swagger_name(attribute_name):
     :param str attribute_name: python attribute name
     :return: swagger name
     """
-    if attribute_name == 'ref':
+    if attribute_name == "ref":
         return "$ref"
     if attribute_name.startswith("x_"):
         return "x-" + camelize(attribute_name[2:], uppercase_first_letter=False)
-    return camelize(attribute_name.rstrip('_'), uppercase_first_letter=False)
+    return camelize(attribute_name.rstrip("_"), uppercase_first_letter=False)
 
 
 def _bare_SwaggerDict(cls):
@@ -98,24 +101,26 @@ class SwaggerDict(OrderedDict):
         if type(self) == SwaggerDict:
             self._insert_extras__()
 
-    def __setattr__(self, key, value):
-        if key.startswith('_'):
+    def __setattr__(self, key: str, value):
+        if key.startswith("_"):
             super(SwaggerDict, self).__setattr__(key, value)
             return
         if value is not None:
             self[make_swagger_name(key)] = value
 
     def __getattr__(self, item):
-        if item.startswith('_'):
+        if item.startswith("_"):
             raise AttributeError
         try:
             return self[make_swagger_name(item)]
         except KeyError:
             # raise_from is EXTREMELY slow, replaced with plain raise
-            raise AttributeError("object of class " + type(self).__name__ + " has no attribute " + item)
+            raise AttributeError(
+                "object of class " + type(self).__name__ + " has no attribute " + item
+            )
 
     def __delattr__(self, item):
-        if item.startswith('_'):
+        if item.startswith("_"):
             super(SwaggerDict, self).__delattr__(item)
             return
         del self[make_swagger_name(item)]
@@ -132,12 +137,12 @@ class SwaggerDict(OrderedDict):
             setattr(self, attr, val)
 
     @staticmethod
-    def _as_odict(obj, memo):
+    def _as_odict(obj, memo: Dict):
         """Implementation detail of :meth:`.as_odict`"""
         if id(obj) in memo:
             return memo[id(obj)]
 
-        if isinstance(obj, Promise) and hasattr(obj, '_proxy____cast'):
+        if isinstance(obj, Promise) and hasattr(obj, "_proxy____cast"):
             # handle __proxy__ objects from django.utils.functional.lazy
             obj = obj._proxy____cast()
 
@@ -152,27 +157,34 @@ class SwaggerDict(OrderedDict):
             return result
         elif isinstance(obj, six.string_types):
             return force_real_str(obj)
-        elif isinstance(obj, collections_abc.Iterable) and not isinstance(obj, collections_abc.Iterator):
+        elif isinstance(obj, collections_abc.Iterable) and not isinstance(
+            obj, collections_abc.Iterator
+        ):
             return type(obj)(SwaggerDict._as_odict(elem, memo) for elem in obj)
 
         return obj
 
-    def as_odict(self):
+    def as_odict(self) -> "SwaggerDict":
         """Convert this object into an ``OrderedDict`` instance.
 
-        :rtype: OrderedDict
         """
         return SwaggerDict._as_odict(self, {})
 
     def __reduce__(self):
         # for pickle supprt; this skips calls to all SwaggerDict __init__ methods and relies
         # on the already set attributes instead
-        attrs = {k: v for k, v in vars(self).items() if not k.startswith('_NP_')}
+        attrs = {k: v for k, v in vars(self).items() if not k.startswith("_NP_")}
         return _bare_SwaggerDict, (type(self),), attrs, None, iter(self.items())
 
 
 class Contact(SwaggerDict):
-    def __init__(self, name=None, url=None, email=None, **extra):
+    def __init__(
+        self,
+        name: Optional[str] = None,
+        url: Optional[str] = None,
+        email: Optional[str] = None,
+        **extra
+    ):
         """Swagger Contact object
 
         At least one of the following fields is required:
@@ -183,7 +195,9 @@ class Contact(SwaggerDict):
         """
         super(Contact, self).__init__(**extra)
         if name is None and url is None and email is None:
-            raise AssertionError("one of name, url or email is requires for Swagger Contact object")
+            raise AssertionError(
+                "one of name, url or email is requires for Swagger Contact object"
+            )
         self.name = name
         self.url = url
         self.email = email
@@ -191,7 +205,7 @@ class Contact(SwaggerDict):
 
 
 class License(SwaggerDict):
-    def __init__(self, name, url=None, **extra):
+    def __init__(self, name: str, url: Optional[str] = None, **extra):
         """Swagger License object
 
         :param str name: Required. License name
@@ -206,8 +220,16 @@ class License(SwaggerDict):
 
 
 class Info(SwaggerDict):
-    def __init__(self, title, default_version, description=None, terms_of_service=None, contact=None, license=None,
-                 **extra):
+    def __init__(
+        self,
+        title: str,
+        default_version: str,
+        description: Optional[str] = None,
+        terms_of_service: Optional[str] = None,
+        contact: Optional[Contact] = None,
+        license: Optional[License] = None,
+        **extra
+    ):
         """Swagger Info object
 
         :param str title: Required. API title.
@@ -219,7 +241,9 @@ class Info(SwaggerDict):
         """
         super(Info, self).__init__(**extra)
         if title is None or default_version is None:
-            raise AssertionError("title and version are required for Swagger info object")
+            raise AssertionError(
+                "title and version are required for Swagger info object"
+            )
         if contact is not None and not isinstance(contact, Contact):
             raise AssertionError("contact must be a Contact object")
         if license is not None and not isinstance(license, License):
@@ -234,8 +258,20 @@ class Info(SwaggerDict):
 
 
 class Swagger(SwaggerDict):
-    def __init__(self, info=None, _url=None, _prefix=None, _version=None, consumes=None, produces=None,
-                 security_definitions=None, security=None, paths=None, definitions=None, **extra):
+    def __init__(
+        self,
+        info: Optional[Info] = None,
+        _url: Optional[str] = None,
+        _prefix: Optional[str] = None,
+        _version: Optional[str] = None,
+        consumes: Optional[List[str]] = None,
+        produces: Optional[List[str]] = None,
+        security_definitions: Optional[Dict[str, Dict]] = None,
+        security: Optional[List[Dict[str, List[str]]]] = None,
+        paths: Optional["Paths"] = None,
+        definitions: Optional[Dict[str, "Schema"]] = None,
+        **extra
+    ):
         """Root Swagger object.
 
         :param .Info info: info object
@@ -251,13 +287,15 @@ class Swagger(SwaggerDict):
         :param dict[str,Schema] definitions: named models
         """
         super(Swagger, self).__init__(**extra)
-        self.swagger = '2.0'
+        self.swagger = "2.0"
         self.info = info
         self.info.version = _version or info._default_version
 
         if _url:
             url = urlparse.urlparse(_url)
-            assert url.netloc and url.scheme, "if given, url must have both schema and netloc"
+            assert (
+                url.netloc and url.scheme
+            ), "if given, url must have both schema and netloc"
             self.host = url.netloc
             self.schemes = [url.scheme]
 
@@ -279,24 +317,24 @@ class Swagger(SwaggerDict):
         :return: joined base path
         """
         # avoid double slash when joining script_name with api_prefix
-        if script_prefix and script_prefix.endswith('/'):
+        if script_prefix and script_prefix.endswith("/"):
             script_prefix = script_prefix[:-1]
-        if not api_prefix.startswith('/'):
-            api_prefix = '/' + api_prefix
+        if not api_prefix.startswith("/"):
+            api_prefix = "/" + api_prefix
 
         base_path = script_prefix + api_prefix
 
         # ensure that the base path has a leading slash and no trailing slash
-        if base_path and base_path.endswith('/'):
+        if base_path and base_path.endswith("/"):
             base_path = base_path[:-1]
-        if not base_path.startswith('/'):
-            base_path = '/' + base_path
+        if not base_path.startswith("/"):
+            base_path = "/" + base_path
 
         return base_path
 
 
 class Paths(SwaggerDict):
-    def __init__(self, paths, **extra):
+    def __init__(self, paths: Dict[str, "PathItem"], **extra):
         """A listing of all the paths in the API.
 
         :param dict[str,PathItem] paths:
@@ -310,10 +348,20 @@ class Paths(SwaggerDict):
 
 
 class PathItem(SwaggerDict):
-    OPERATION_NAMES = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch']
+    OPERATION_NAMES = ["get", "put", "post", "delete", "options", "head", "patch"]
 
-    def __init__(self, get=None, put=None, post=None, delete=None, options=None,
-                 head=None, patch=None, parameters=None, **extra):
+    def __init__(
+        self,
+        get: Optional["Operation"] = None,
+        put: Optional["Operation"] = None,
+        post: Optional["Operation"] = None,
+        delete: Optional["Operation"] = None,
+        options: Optional["Operation"] = None,
+        head: Optional["Operation"] = None,
+        patch: Optional["Operation"] = None,
+        parameters: Optional[List["Parameter"]] = None,
+        **extra
+    ):
         """Information about a single path
 
         :param Operation get: operation for GET
@@ -337,18 +385,28 @@ class PathItem(SwaggerDict):
         self._insert_extras__()
 
     @property
-    def operations(self):
+    def operations(self) -> List[Tuple[str, "Operation"]]:
         """A list of all standard Operations on this PathItem object. See :attr:`.OPERATION_NAMES`.
 
         :return: list of (method name, Operation) tuples
-        :rtype: list[tuple[str,Operation]]
         """
         return [(k, v) for k, v in self.items() if k in PathItem.OPERATION_NAMES and v]
 
 
 class Operation(SwaggerDict):
-    def __init__(self, operation_id, responses, parameters=None, consumes=None, produces=None, summary=None,
-                 description=None, tags=None, security=None, **extra):
+    def __init__(
+        self,
+        operation_id: str,
+        responses: "Responses",
+        parameters: Optional[List["Parameter"]] = None,
+        consumes: Optional[List[str]] = None,
+        produces: Optional[List[str]] = None,
+        summary: Optional[str] = None,
+        description: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        security: Optional[Dict[str, List[str]]] = None,
+        **extra
+    ):
         """Information about an API operation (path + http method combination)
 
         :param str operation_id: operation ID, should be unique across all operations
@@ -382,11 +440,21 @@ def _check_type(type, format, enum, pattern, items, _obj_type):
     if pattern and type != TYPE_STRING:
         raise AssertionError("pattern can only be used when type is string")
     if (format or enum or pattern) and type in (TYPE_OBJECT, TYPE_ARRAY, None):
-        raise AssertionError("[format, enum, pattern] can only be applied to primitive " + _obj_type)
+        raise AssertionError(
+            "[format, enum, pattern] can only be applied to primitive " + _obj_type
+        )
 
 
 class Items(SwaggerDict):
-    def __init__(self, type=None, format=None, enum=None, pattern=None, items=None, **extra):
+    def __init__(
+        self,
+        type: str = None,
+        format: Optional[str] = None,
+        enum: Optional[List] = None,
+        pattern: Optional[str] = None,
+        items: Optional["Items"] = None,
+        **extra
+    ):
         """Used when defining an array :class:`.Parameter` to describe the array elements.
 
         :param str type: type of the array elements; must not be ``object``
@@ -407,8 +475,21 @@ class Items(SwaggerDict):
 
 
 class Parameter(SwaggerDict):
-    def __init__(self, name, in_, description=None, required=None, schema=None,
-                 type=None, format=None, enum=None, pattern=None, items=None, default=None, **extra):
+    def __init__(
+        self,
+        name: str,
+        in_: str,
+        description: Optional[str] = None,
+        required: Optional[bool] = None,
+        schema: Optional[Union["Schema", "SchemaRef"]] = None,
+        type: Optional[str] = None,
+        format: Optional[str] = None,
+        enum: Optional[List] = None,
+        pattern: Optional[str] = None,
+        items: Optional[Items] = None,
+        default: Optional[Any] = None,
+        **extra
+    ):
         """Describe parameters accepted by an :class:`.Operation`. Each parameter should be a unique combination of
         (`name`, `in_`). ``body`` and ``form`` parameters in the same operation are mutually exclusive.
 
@@ -439,15 +520,19 @@ class Parameter(SwaggerDict):
         self.default = default
         self._insert_extras__()
         if (not schema and not type) or (schema and type):
-            raise AssertionError("either schema or type are required for Parameter object (not both)!")
+            raise AssertionError(
+                "either schema or type are required for Parameter object (not both)!"
+            )
         if schema and isinstance(schema, Schema):
             schema._remove_read_only()
-        if self['in'] == IN_PATH:
+        if self["in"] == IN_PATH:
             # path parameters must always be required
             assert required is not False, "path parameter cannot be optional"
             self.required = True
-        if self['in'] != IN_BODY and schema is not None:
-            raise AssertionError("schema can only be applied to a body Parameter, not %s" % type)
+        if self["in"] != IN_BODY and schema is not None:
+            raise AssertionError(
+                "schema can only be applied to a body Parameter, not %s" % type
+            )
         if default and not type:
             raise AssertionError("default can only be applied to a non-body Parameter")
         _check_type(type, format, enum, pattern, items, self.__class__)
@@ -456,8 +541,22 @@ class Parameter(SwaggerDict):
 class Schema(SwaggerDict):
     OR_REF = ()  #: useful for type-checking, e.g ``isinstance(obj, openapi.Schema.OR_REF)``
 
-    def __init__(self, title=None, description=None, type=None, format=None, enum=None, pattern=None, properties=None,
-                 additional_properties=None, required=None, items=None, default=None, read_only=None, **extra):
+    def __init__(
+        self,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        type: str = None,
+        format: Optional[str] = None,
+        enum: Optional[List] = None,
+        pattern: Optional[str] = None,
+        properties: Optional[Dict[str, Union["Schema", "SchemaRef"]]] = None,
+        additional_properties: Optional[Union[bool, "Schema", "SchemaRef"]] = None,
+        required: Optional[List[str]] = None,
+        items: Optional[Union["Schema", "SchemaRef"]] = None,
+        default=None,
+        read_only=None,
+        **extra
+    ):
         """Describes a complex object accepted as parameter or returned as a response.
 
         :param str title: schema title
@@ -481,8 +580,10 @@ class Schema(SwaggerDict):
         super(Schema, self).__init__(**extra)
         if required is True or required is False:
             # common error
-            raise AssertionError("the `required` attribute of schema must be an "
-                                 "array of required property names, not a boolean!")
+            raise AssertionError(
+                "the `required` attribute of schema must be an "
+                "array of required property names, not a boolean!"
+            )
         assert type, "type is required!"
         self.title = title
         self.description = description
@@ -504,13 +605,20 @@ class Schema(SwaggerDict):
     def _remove_read_only(self):
         # readOnly is only valid for Schemas inside another Schema's properties;
         # when placing Schema elsewhere we must take care to remove the readOnly flag
-        self.pop('readOnly', '')
+        self.pop("readOnly", "")
 
 
 class _Ref(SwaggerDict):
     ref_name_re = re.compile(r"#/(?P<scope>.+)/(?P<name>[^/]+)$")
 
-    def __init__(self, resolver, name, scope, expected_type, ignore_unresolved=False):
+    def __init__(
+        self,
+        resolver: "ReferenceResolver",
+        name: str,
+        scope: str,
+        expected_type: Type[SwaggerDict],
+        ignore_unresolved: bool = False,
+    ):
         """Base class for all reference types. A reference object has only one property, ``$ref``, which must be a JSON
         reference to a valid object in the specification, e.g. ``#/definitions/Article`` to refer to an article model.
 
@@ -525,8 +633,12 @@ class _Ref(SwaggerDict):
         ref_name = "#/{scope}/{name}".format(scope=scope, name=name)
         if not ignore_unresolved:
             obj = resolver.get(name, scope)
-            assert isinstance(obj, expected_type), ref_name + " is a {actual}, not a {expected}" \
-                .format(actual=type(obj).__name__, expected=expected_type.__name__)
+            assert isinstance(obj, expected_type), (
+                ref_name
+                + " is a {actual}, not a {expected}".format(
+                    actual=type(obj).__name__, expected=expected_type.__name__
+                )
+            )
         self.ref = ref_name
 
     def resolve(self, resolver):
@@ -536,19 +648,26 @@ class _Ref(SwaggerDict):
         :returns: the target object
         """
         ref_match = self.ref_name_re.match(self.ref)
-        return resolver.get(ref_match.group('name'), scope=ref_match.group('scope'))
+        return resolver.get(ref_match.group("name"), scope=ref_match.group("scope"))
 
     def __setitem__(self, key, value):
         if key == "$ref":
             return super(_Ref, self).__setitem__(key, value)
-        raise NotImplementedError("only $ref can be set on Reference objects (not %s)" % key)
+        raise NotImplementedError(
+            "only $ref can be set on Reference objects (not %s)" % key
+        )
 
     def __delitem__(self, key):
         raise NotImplementedError("cannot delete property of Reference object")
 
 
 class SchemaRef(_Ref):
-    def __init__(self, resolver, schema_name, ignore_unresolved=False):
+    def __init__(
+        self,
+        resolver: "ReferenceResolver",
+        schema_name: str,
+        ignore_unresolved: bool = False,
+    ):
         """Adds a reference to a named Schema defined in the ``#/definitions/`` object.
 
         :param .ReferenceResolver resolver: component resolver which must contain the definition
@@ -556,13 +675,15 @@ class SchemaRef(_Ref):
         :param bool ignore_unresolved: do not throw if the referenced object does not exist
         """
         assert SCHEMA_DEFINITIONS in resolver.scopes
-        super(SchemaRef, self).__init__(resolver, schema_name, SCHEMA_DEFINITIONS, Schema, ignore_unresolved)
+        super(SchemaRef, self).__init__(
+            resolver, schema_name, SCHEMA_DEFINITIONS, Schema, ignore_unresolved
+        )
 
 
 Schema.OR_REF = (Schema, SchemaRef)
 
 
-def resolve_ref(ref_or_obj, resolver):
+def resolve_ref(ref_or_obj: Union[_Ref, SwaggerDict], resolver: "ReferenceResolver"):
     """Resolve `ref_or_obj` if it is a reference type. Return it unchaged if not.
 
     :param ref_or_obj: object to derefernece
@@ -575,7 +696,12 @@ def resolve_ref(ref_or_obj, resolver):
 
 
 class Responses(SwaggerDict):
-    def __init__(self, responses, default=None, **extra):
+    def __init__(
+        self,
+        responses: Dict[Union[str, int], "Response"],
+        default: Optional["Response"] = None,
+        **extra
+    ):
         """Describes the expected responses of an :class:`.Operation`.
 
         :param responses: mapping of status code to response definition
@@ -591,7 +717,13 @@ class Responses(SwaggerDict):
 
 
 class Response(SwaggerDict):
-    def __init__(self, description, schema=None, examples=None, **extra):
+    def __init__(
+        self,
+        description: str,
+        schema: Optional[Union["Schema", "SchemaRef", serializers.Serializer]] = None,
+        examples=None,
+        **extra
+    ):
         """Describes the structure of an operation's response.
 
         :param str description: response description
@@ -609,7 +741,7 @@ class Response(SwaggerDict):
             schema._remove_read_only()
 
 
-class ReferenceResolver(object):
+class ReferenceResolver:
     """A mapping type intended for storing objects pointed at by Swagger Refs.
     Provides support and checks for different refernce scopes, e.g. 'definitions'.
 
@@ -628,7 +760,7 @@ class ReferenceResolver(object):
         """
         :param str scopes: an enumeration of the valid scopes this resolver will contain
         """
-        force_init = kwargs.pop('force_init', False)
+        force_init = kwargs.pop("force_init", False)
         if not force_init:
             raise AssertionError(
                 "Creating an instance of ReferenceResolver almost certainly won't do what you want it to do.\n"
@@ -644,7 +776,7 @@ class ReferenceResolver(object):
             assert isinstance(scope, str), "scope names must be strings"
             self._objects[scope] = OrderedDict()
 
-    def with_scope(self, scope):
+    def with_scope(self, scope: str) -> "ReferenceResolver":
         """Return a view into this :class:`.ReferenceResolver` whose scope is defaulted and forced to `scope`.
 
         :param str scope: target scope, must be in this resolver's `scopes`
@@ -657,14 +789,16 @@ class ReferenceResolver(object):
         ret._force_scope = scope
         return ret
 
-    def _check_scope(self, scope):
+    def _check_scope(self, scope: str):
         real_scope = self._force_scope or scope
         if scope is not None:
-            assert not self._force_scope or scope == self._force_scope, "cannot overrride forced scope"
+            assert (
+                not self._force_scope or scope == self._force_scope
+            ), "cannot overrride forced scope"
         assert real_scope and real_scope in self._objects, "invalid scope %s" % scope
         return real_scope
 
-    def set(self, name, obj, scope=None):
+    def set(self, name: str, obj, scope: Optional[str] = None):
         """Set an object in the given scope, raise an error if it already exists.
 
         :param str name: reference name
@@ -673,10 +807,13 @@ class ReferenceResolver(object):
         """
         scope = self._check_scope(scope)
         assert obj is not None, "referenced objects cannot be None/null"
-        assert name not in self._objects[scope], "#/%s/%s already exists" % (scope, name)
+        assert name not in self._objects[scope], "#/%s/%s already exists" % (
+            scope,
+            name,
+        )
         self._objects[scope][name] = obj
 
-    def setdefault(self, name, maker, scope=None):
+    def setdefault(self, name: str, maker: Callable, scope: Optional[str] = None):
         """Set an object in the given scope only if it does not exist.
 
         :param str name: reference name
@@ -684,21 +821,28 @@ class ReferenceResolver(object):
         :param str scope: reference scope
         """
         scope = self._check_scope(scope)
-        assert callable(maker), "setdefault expects a callable, not %s" % type(maker).__name__
+        assert callable(maker), (
+            "setdefault expects a callable, not %s" % type(maker).__name__
+        )
         ret = self.getdefault(name, None, scope)
         if ret is None:
             ret = maker()
             value = self.getdefault(name, None, scope)
-            assert ret is not None, "maker returned None; referenced objects cannot be None/null"
+            assert (
+                ret is not None
+            ), "maker returned None; referenced objects cannot be None/null"
             if value is None:
                 self.set(name, ret, scope)
             elif value != ret:
-                logger.debug("during setdefault, maker for %s inserted a value and returned a different value", name)
+                logger.debug(
+                    "during setdefault, maker for %s inserted a value and returned a different value",
+                    name,
+                )
                 ret = value
 
         return ret
 
-    def get(self, name, scope=None):
+    def get(self, name: str, scope: Optional[str] = None):
         """Get an object from the given scope, raise an error if it does not exist.
 
         :param str name: reference name
@@ -709,7 +853,7 @@ class ReferenceResolver(object):
         assert name in self._objects[scope], "#/%s/%s is not defined" % (scope, name)
         return self._objects[scope][name]
 
-    def getdefault(self, name, default=None, scope=None):
+    def getdefault(self, name: str, default=None, scope: Optional[str] = None):
         """Get an object from the given scope or a default value if it does not exist.
 
         :param str name: reference name
@@ -720,7 +864,7 @@ class ReferenceResolver(object):
         scope = self._check_scope(scope)
         return self._objects[scope].get(name, default)
 
-    def has(self, name, scope=None):
+    def has(self, name: str, scope: Optional[str] = None):
         """Check if an object exists in the given scope.
 
         :param str name: reference name

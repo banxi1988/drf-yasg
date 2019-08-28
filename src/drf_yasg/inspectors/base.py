@@ -1,8 +1,18 @@
 import inspect
 import logging
-
+from typing import Union, Type, Optional, Any, List, Dict, Tuple, Callable
+from typing_extensions import Literal
+import rest_framework
 from rest_framework import serializers
+from rest_framework.fields import Field
+from rest_framework.pagination import BasePagination
+from rest_framework.parsers import BaseParser
+from rest_framework.renderers import BaseRenderer
+from rest_framework.request import Request
+from rest_framework.serializers import Serializer
+from rest_framework.views import APIView
 
+from drf_yasg.openapi import ReferenceResolver, Schema
 from .. import openapi
 from ..utils import force_real_str, get_field_default, get_object_classes, is_list_view
 
@@ -12,25 +22,29 @@ NotHandled = object()
 logger = logging.getLogger(__name__)
 
 
-def is_callable_method(cls_or_instance, method_name):
+def is_callable_method(cls_or_instance: Union[object, type], method_name: str):
     method = getattr(cls_or_instance, method_name)
-    if inspect.ismethod(method) and getattr(method, '__self__', None):
+    if inspect.ismethod(method) and getattr(method, "__self__", None):
         # bound classmethod or instance method
         return method, True
 
-    try:
-        # inspect.getattr_static was added in python 3.2
-        from inspect import getattr_static
+    # inspect.getattr_static was added in python 3.2
+    from inspect import getattr_static
 
-        # on python 3, both unbound instance methods (i.e. getattr(cls, mth)) and static methods are plain functions
-        # getattr_static allows us to check the type of the method descriptor; for `@staticmethod` this is staticmethod
-        return method, isinstance(getattr_static(cls_or_instance, method_name, None), staticmethod)
-    except ImportError:
-        # python 2 still has unbound methods, so ismethod <=> !staticmethod TODO: remove when dropping python 2.7
-        return method, not inspect.ismethod(method)
+    # on python 3, both unbound instance methods (i.e. getattr(cls, mth)) and static methods are plain functions
+    # getattr_static allows us to check the type of the method descriptor; for `@staticmethod` this is staticmethod
+    return (
+        method,
+        isinstance(getattr_static(cls_or_instance, method_name, None), staticmethod),
+    )
 
 
-def call_view_method(view, method_name, fallback_attr=None, default=None):
+def call_view_method(
+    view: Union[APIView, Type[APIView]],
+    method_name: str,
+    fallback_attr: Optional[str] = None,
+    default=None,
+) -> Any:
     """Call a view method which might throw an exception. If an exception is thrown, log an informative error message
     and return the value of fallback_attr, or default if not present. The method must be callable without any arguments
     except cls or self.
@@ -41,7 +55,6 @@ def call_view_method(view, method_name, fallback_attr=None, default=None):
     :param str fallback_attr: name of an attribute on the view to fall back on, if calling the method fails
     :param default: default value if all else fails
     :return: view method's return value, or value of view's fallback_attr, or default
-    :rtype: any or None
     """
     if hasattr(view, method_name):
         try:
@@ -49,9 +62,12 @@ def call_view_method(view, method_name, fallback_attr=None, default=None):
             if is_callabale:
                 return view_method()
         except Exception:  # pragma: no cover
-            logger.warning("view's %s raised exception during schema generation; use "
-                           "`getattr(self, 'swagger_fake_view', False)` to detect and short-circuit this",
-                           type(view).__name__, exc_info=True)
+            logger.warning(
+                "view's %s raised exception during schema generation; use "
+                "`getattr(self, 'swagger_fake_view', False)` to detect and short-circuit this",
+                type(view).__name__,
+                exc_info=True,
+            )
 
     if fallback_attr and hasattr(view, fallback_attr):
         return getattr(view, fallback_attr)
@@ -59,8 +75,15 @@ def call_view_method(view, method_name, fallback_attr=None, default=None):
     return default
 
 
-class BaseInspector(object):
-    def __init__(self, view, path, method, components, request):
+class BaseInspector:
+    def __init__(
+        self,
+        view: APIView,
+        path: str,
+        method: str,
+        components: ReferenceResolver,
+        request: Optional[Request],
+    ):
         """
         :param rest_framework.views.APIView view: the view associated with this endpoint
         :param str path: the path component of the operation URL
@@ -74,7 +97,7 @@ class BaseInspector(object):
         self.components = components
         self.request = request
 
-    def process_result(self, result, method_name, obj, **kwargs):
+    def process_result(self, result: Any, method_name: str, obj: Any, **kwargs) -> Any:
         """After an inspector handles an object (i.e. returns a value other than :data:`.NotHandled`), all inspectors
         that were probed get the chance to alter the result, in reverse order. The inspector that handled the object
         is the first to receive a ``process_result`` call with the object it just returned.
@@ -91,7 +114,14 @@ class BaseInspector(object):
         """
         return result
 
-    def probe_inspectors(self, inspectors, method_name, obj, initkwargs=None, **kwargs):
+    def probe_inspectors(
+        self,
+        inspectors: List[Type["BaseInspector"]],
+        method_name: str,
+        obj: Any,
+        initkwargs: Optional[Dict] = None,
+        **kwargs
+    ) -> Any:
         """Probe a list of inspectors with a given object. The first inspector in the list to return a value that
         is not :data:`.NotHandled` wins.
 
@@ -106,10 +136,21 @@ class BaseInspector(object):
         tried_inspectors = []
 
         for inspector in inspectors:
-            assert inspect.isclass(inspector), "inspector must be a class, not an object"
-            assert issubclass(inspector, BaseInspector), "inspectors must subclass BaseInspector"
+            assert inspect.isclass(
+                inspector
+            ), "inspector must be a class, not an object"
+            assert issubclass(
+                inspector, BaseInspector
+            ), "inspectors must subclass BaseInspector"
 
-            inspector = inspector(self.view, self.path, self.method, self.components, self.request, **initkwargs)
+            inspector = inspector(
+                self.view,
+                self.path,
+                self.method,
+                self.components,
+                self.request,
+                **initkwargs
+            )
             tried_inspectors.append(inspector)
             method = getattr(inspector, method_name, None)
             if method is None:
@@ -119,8 +160,12 @@ class BaseInspector(object):
             if result is not NotHandled:
                 break
         else:  # pragma: no cover
-            logger.warning("%s ignored because no inspector in %s handled it (operation: %s)",
-                           obj, inspectors, method_name)
+            logger.warning(
+                "%s ignored because no inspector in %s handled it (operation: %s)",
+                obj,
+                inspectors,
+                method_name,
+            )
             result = None
 
         for inspector in reversed(tried_inspectors):
@@ -128,21 +173,23 @@ class BaseInspector(object):
 
         return result
 
-    def get_renderer_classes(self):
+    def get_renderer_classes(self) -> List[Type[rest_framework.renderers.BaseRenderer]]:
         """Get the renderer classes of this view by calling `get_renderers`.
 
         :return: renderer classes
-        :rtype: list[type[rest_framework.renderers.BaseRenderer]]
         """
-        return get_object_classes(call_view_method(self.view, 'get_renderers', 'renderer_classes', []))
+        return get_object_classes(
+            call_view_method(self.view, "get_renderers", "renderer_classes", [])
+        )
 
-    def get_parser_classes(self):
+    def get_parser_classes(self) -> List[Type[rest_framework.parsers.BaseParser]]:
         """Get the parser classes of this view by calling `get_parsers`.
 
         :return: parser classes
-        :rtype: list[type[rest_framework.parsers.BaseParser]]
         """
-        return get_object_classes(call_view_method(self.view, 'get_parsers', 'parser_classes', []))
+        return get_object_classes(
+            call_view_method(self.view, "get_parsers", "parser_classes", [])
+        )
 
 
 class PaginatorInspector(BaseInspector):
@@ -151,24 +198,26 @@ class PaginatorInspector(BaseInspector):
     Responisble for determining extra query parameters and response structure added by given paginators.
     """
 
-    def get_paginator_parameters(self, paginator):
+    def get_paginator_parameters(
+        self, paginator: BasePagination
+    ) -> Union[Literal[NotHandled], List[openapi.Parameter]]:
         """Get the pagination parameters for a single paginator **instance**.
 
         Should return :data:`.NotHandled` if this inspector does not know how to handle the given `paginator`.
 
         :param BasePagination paginator: the paginator
-        :rtype: list[openapi.Parameter]
         """
         return NotHandled
 
-    def get_paginated_response(self, paginator, response_schema):
+    def get_paginated_response(
+        self, paginator: BasePagination, response_schema: openapi.Schema
+    ) -> Union[Literal[NotHandled], openapi.Schema]:
         """Add appropriate paging fields to a response :class:`.Schema`.
 
         Should return :data:`.NotHandled` if this inspector does not know how to handle the given `paginator`.
 
         :param BasePagination paginator: the paginator
         :param openapi.Schema response_schema: the response schema that must be paged.
-        :rtype: openapi.Schema
         """
         return NotHandled
 
@@ -179,13 +228,12 @@ class FilterInspector(BaseInspector):
     Responsible for determining extra query parameters added by given filter backends.
     """
 
-    def get_filter_parameters(self, filter_backend):
+    def get_filter_parameters(self, filter_backend) -> List[openapi.Parameter]:
         """Get the filter parameters for a single filter backend **instance**.
 
         Should return :data:`.NotHandled` if this inspector does not know how to handle the given `filter_backend`.
 
         :param BaseFilterBackend filter_backend: the filter backend
-        :rtype: list[openapi.Parameter]
         """
         return NotHandled
 
@@ -193,24 +241,48 @@ class FilterInspector(BaseInspector):
 class FieldInspector(BaseInspector):
     """Base inspector for serializers and serializer fields. """
 
-    def __init__(self, view, path, method, components, request, field_inspectors):
+    def __init__(
+        self,
+        view: APIView,
+        path: str,
+        method: str,
+        components: ReferenceResolver,
+        request: Optional[Request],
+        field_inspectors: List["FieldInspector"],
+    ):
         super(FieldInspector, self).__init__(view, path, method, components, request)
         self.field_inspectors = field_inspectors
 
-    def add_manual_fields(self, serializer_or_field, schema):
+    def add_manual_fields(
+        self,
+        serializer_or_field: Union[Serializer, serializers.Field],
+        schema: openapi.Schema,
+    ) -> None:
         """Set fields from the ``swagger_schem_fields`` attribute on the Meta class. This method is called
         only for serializers or fields that are converted into ``openapi.Schema`` objects.
 
         :param serializer_or_field: serializer or field instance
         :param openapi.Schema schema: the schema object to be modified in-place
         """
-        meta = getattr(serializer_or_field, 'Meta', None)
-        swagger_schema_fields = getattr(meta, 'swagger_schema_fields', {})
+        meta = getattr(serializer_or_field, "Meta", None)
+        swagger_schema_fields = getattr(meta, "swagger_schema_fields", {})
         if swagger_schema_fields:
             for attr, val in swagger_schema_fields.items():
                 setattr(schema, attr, val)
 
-    def field_to_swagger_object(self, field, swagger_object_type, use_references, **kwargs):
+    def field_to_swagger_object(
+        self,
+        field: serializers.Field,
+        swagger_object_type: openapi.SwaggerDict,
+        use_references: bool,
+        **kwargs
+    ) -> Union[
+        openapi.Parameter,
+        openapi.Items,
+        openapi.Schema,
+        openapi.SchemaRef,
+        Literal[NotHandled],
+    ]:
         """Convert a drf Serializer or Field instance into a Swagger object.
 
         Should return :data:`.NotHandled` if this inspector does not know how to handle the given `field`.
@@ -222,23 +294,37 @@ class FieldInspector(BaseInspector):
         :param kwargs: extra attributes for constructing the object;
            if swagger_object_type is Parameter, ``name`` and ``in_`` should be provided
         :return: the swagger object
-        :rtype: openapi.Parameter or openapi.Items or openapi.Schema or openapi.SchemaRef
         """
         return NotHandled
 
-    def probe_field_inspectors(self, field, swagger_object_type, use_references, **kwargs):
+    def probe_field_inspectors(
+        self,
+        field: serializers.Field,
+        swagger_object_type: openapi.SwaggerDict,
+        use_references: bool,
+        **kwargs
+    ) -> Union[openapi.Parameter, openapi.Items, openapi.Schema, openapi.SchemaRef]:
         """Helper method for recursively probing `field_inspectors` to handle a given field.
 
         All arguments are the same as :meth:`.field_to_swagger_object`.
-
-        :rtype: openapi.Parameter or openapi.Items or openapi.Schema or openapi.SchemaRef
         """
         return self.probe_inspectors(
-            self.field_inspectors, 'field_to_swagger_object', field, {'field_inspectors': self.field_inspectors},
-            swagger_object_type=swagger_object_type, use_references=use_references, **kwargs
+            self.field_inspectors,
+            "field_to_swagger_object",
+            field,
+            {"field_inspectors": self.field_inspectors},
+            swagger_object_type=swagger_object_type,
+            use_references=use_references,
+            **kwargs
         )
 
-    def _get_partial_types(self, field, swagger_object_type, use_references, **kwargs):
+    def _get_partial_types(
+        self,
+        field: serializers.Field,
+        swagger_object_type: openapi.SwaggerDict,
+        use_references: bool,
+        **kwargs
+    ):
         """Helper method to extract generic information from a field and return a partial constructor for the
         appropriate openapi object.
 
@@ -269,28 +355,44 @@ class FieldInspector(BaseInspector):
         :rtype: (function,type[openapi.Schema] or type[openapi.Items])
         """
         assert swagger_object_type in (openapi.Schema, openapi.Parameter, openapi.Items)
-        assert not isinstance(field, openapi.SwaggerDict), "passed field is already a SwaggerDict object"
+        assert not isinstance(
+            field, openapi.SwaggerDict
+        ), "passed field is already a SwaggerDict object"
         title = force_real_str(field.label) if field.label else None
-        title = title if swagger_object_type == openapi.Schema else None  # only Schema has title
-        help_text = getattr(field, 'help_text', None)
+        title = (
+            title if swagger_object_type == openapi.Schema else None
+        )  # only Schema has title
+        help_text = getattr(field, "help_text", None)
         description = force_real_str(help_text) if help_text else None
-        description = description if swagger_object_type != openapi.Items else None  # Items has no description either
+        description = (
+            description if swagger_object_type != openapi.Items else None
+        )  # Items has no description either
 
         def SwaggerType(existing_object=None, **instance_kwargs):
-            if 'required' not in instance_kwargs and swagger_object_type == openapi.Parameter:
-                instance_kwargs['required'] = field.required
+            if (
+                "required" not in instance_kwargs
+                and swagger_object_type == openapi.Parameter
+            ):
+                instance_kwargs["required"] = field.required
 
-            if 'default' not in instance_kwargs and swagger_object_type != openapi.Items:
+            if (
+                "default" not in instance_kwargs
+                and swagger_object_type != openapi.Items
+            ):
                 default = get_field_default(field)
                 if default not in (None, serializers.empty):
-                    instance_kwargs['default'] = default
+                    instance_kwargs["default"] = default
 
-            if instance_kwargs.get('type', None) != openapi.TYPE_ARRAY:
-                instance_kwargs.setdefault('title', title)
+            if instance_kwargs.get("type", None) != openapi.TYPE_ARRAY:
+                instance_kwargs.setdefault("title", title)
             if description is not None:
-                instance_kwargs.setdefault('description', description)
-            if field.allow_null and not instance_kwargs.get('required', False) and not field.required:
-                instance_kwargs['x_nullable'] = True
+                instance_kwargs.setdefault("description", description)
+            if (
+                field.allow_null
+                and not instance_kwargs.get("required", False)
+                and not field.required
+            ):
+                instance_kwargs["x_nullable"] = True
 
             instance_kwargs.update(kwargs)
 
@@ -309,48 +411,65 @@ class FieldInspector(BaseInspector):
             return result
 
         # arrays in Schema have Schema elements, arrays in Parameter and Items have Items elements
-        child_swagger_type = openapi.Schema if swagger_object_type == openapi.Schema else openapi.Items
+        child_swagger_type = (
+            openapi.Schema if swagger_object_type == openapi.Schema else openapi.Items
+        )
         return SwaggerType, child_swagger_type
 
 
 class SerializerInspector(FieldInspector):
-    def get_schema(self, serializer):
+    def get_schema(
+        self, serializer: serializers.BaseSerializer
+    ) -> Union[openapi.Schema, Literal[NotHandled]]:
         """Convert a DRF Serializer instance to an :class:`.openapi.Schema`.
 
         Should return :data:`.NotHandled` if this inspector does not know how to handle the given `serializer`.
 
         :param serializers.BaseSerializer serializer: the ``Serializer`` instance
-        :rtype: openapi.Schema
         """
         return NotHandled
 
-    def get_request_parameters(self, serializer, in_):
+    def get_request_parameters(
+        self, serializer: serializers.BaseSerializer, in_: str
+    ) -> Union[List[openapi.Parameter], Literal[NotHandled]]:
         """Convert a DRF serializer into a list of :class:`.Parameter`\\ s.
 
         Should return :data:`.NotHandled` if this inspector does not know how to handle the given `serializer`.
 
         :param serializers.BaseSerializer serializer: the ``Serializer`` instance
         :param str in_: the location of the parameters, one of the `openapi.IN_*` constants
-        :rtype: list[openapi.Parameter]
         """
         return NotHandled
 
 
 class ViewInspector(BaseInspector):
-    body_methods = ('PUT', 'PATCH', 'POST', 'DELETE')  #: methods that are allowed to have a request body
+    body_methods = (
+        "PUT",
+        "PATCH",
+        "POST",
+        "DELETE",
+    )  #: methods that are allowed to have a request body
 
     #: methods that are assumed to require a request body determined by the view's ``serializer_class``
-    implicit_body_methods = ('PUT', 'PATCH', 'POST')
+    implicit_body_methods = ("PUT", "PATCH", "POST")
 
     #: methods which are assumed to return a list of objects when present on non-detail endpoints
-    implicit_list_response_methods = ('GET',)
+    implicit_list_response_methods = ("GET",)
 
     # real values set in __init__ to prevent import errors
     field_inspectors = []  #:
     filter_inspectors = []  #:
     paginator_inspectors = []  #:
 
-    def __init__(self, view, path, method, components, request, overrides):
+    def __init__(
+        self,
+        view: APIView,
+        path: str,
+        method: str,
+        components: ReferenceResolver,
+        request: Optional[Request],
+        overrides: Dict,
+    ):
         """
         Inspector class responsible for providing :class:`.Operation` definitions given a view, path and method.
 
@@ -358,112 +477,130 @@ class ViewInspector(BaseInspector):
         """
         super(ViewInspector, self).__init__(view, path, method, components, request)
         self.overrides = overrides
-        self._prepend_inspector_overrides('field_inspectors')
-        self._prepend_inspector_overrides('filter_inspectors')
-        self._prepend_inspector_overrides('paginator_inspectors')
+        self._prepend_inspector_overrides("field_inspectors")
+        self._prepend_inspector_overrides("filter_inspectors")
+        self._prepend_inspector_overrides("paginator_inspectors")
 
     def _prepend_inspector_overrides(self, inspectors):
         extra_inspectors = self.overrides.get(inspectors, None)
         if extra_inspectors:
-            default_inspectors = [insp for insp in getattr(self, inspectors) if insp not in extra_inspectors]
+            default_inspectors = [
+                insp
+                for insp in getattr(self, inspectors)
+                if insp not in extra_inspectors
+            ]
             setattr(self, inspectors, extra_inspectors + default_inspectors)
 
-    def get_operation(self, operation_keys):
+    def get_operation(self, operation_keys) -> openapi.Operation:
         """Get an :class:`.Operation` for the given API endpoint (path, method).
         This includes query, body parameters and response schemas.
 
         :param tuple[str] operation_keys: an array of keys describing the hierarchical layout of this view in the API;
           e.g. ``('snippets', 'list')``, ``('snippets', 'retrieve')``, etc.
-        :rtype: openapi.Operation
         """
         raise NotImplementedError("ViewInspector must implement get_operation()!")
 
-    def is_list_view(self):
+    def is_list_view(self) -> bool:
         """Determine whether this view is a list or a detail view. The difference between the two is that
         detail views depend on a pk/id path parameter. Note that a non-detail view does not necessarily imply a list
         reponse (:meth:`.has_list_response`), nor are list responses limited to non-detail views.
 
         For example, one might have a `/topic/<pk>/posts` endpoint which is a detail view that has a list response.
-
-        :rtype: bool"""
+        """
         return is_list_view(self.path, self.method, self.view)
 
-    def has_list_response(self):
+    def has_list_response(self) -> bool:
         """Determine whether this view returns multiple objects. By default this is any non-detail view
         (see :meth:`.is_list_view`) whose request method is one of :attr:`.implicit_list_response_methods`.
-
-        :rtype: bool
         """
-        return self.is_list_view() and (self.method.upper() in self.implicit_list_response_methods)
+        return self.is_list_view() and (
+            self.method.upper() in self.implicit_list_response_methods
+        )
 
-    def should_filter(self):
-        """Determine whether filter backend parameters should be included for this request.
+    def should_filter(self) -> bool:
+        """Determine whether filter backend parameters should be included for this request. """
+        return getattr(self.view, "filter_backends", None) and self.has_list_response()
 
-        :rtype: bool
-        """
-        return getattr(self.view, 'filter_backends', None) and self.has_list_response()
-
-    def get_filter_parameters(self):
+    def get_filter_parameters(self) -> List[openapi.Parameter]:
         """Return the parameters added to the view by its filter backends.
-
-        :rtype: list[openapi.Parameter]
         """
         if not self.should_filter():
             return []
 
         fields = []
-        for filter_backend in getattr(self.view, 'filter_backends'):
-            fields += self.probe_inspectors(self.filter_inspectors, 'get_filter_parameters', filter_backend()) or []
+        for filter_backend in getattr(self.view, "filter_backends"):
+            fields += (
+                self.probe_inspectors(
+                    self.filter_inspectors, "get_filter_parameters", filter_backend()
+                )
+                or []
+            )
 
         return fields
 
-    def should_page(self):
+    def should_page(self) -> bool:
         """Determine whether paging parameters and structure should be added to this operation's request and response.
-
-        :rtype: bool
         """
-        return getattr(self.view, 'paginator', None) and self.has_list_response()
+        return getattr(self.view, "paginator", None) and self.has_list_response()
 
-    def get_pagination_parameters(self):
+    def get_pagination_parameters(self) -> List[openapi.Parameter]:
         """Return the parameters added to the view by its paginator.
-
-        :rtype: list[openapi.Parameter]
         """
         if not self.should_page():
             return []
 
-        return self.probe_inspectors(self.paginator_inspectors, 'get_paginator_parameters',
-                                     getattr(self.view, 'paginator')) or []
+        return (
+            self.probe_inspectors(
+                self.paginator_inspectors,
+                "get_paginator_parameters",
+                getattr(self.view, "paginator"),
+            )
+            or []
+        )
 
-    def serializer_to_schema(self, serializer):
+    def serializer_to_schema(
+        self, serializer
+    ) -> Union[openapi.Schema, openapi.SchemaRef]:
         """Convert a serializer to an OpenAPI :class:`.Schema`.
 
         :param serializers.BaseSerializer serializer: the ``Serializer`` instance
         :returns: the converted :class:`.Schema`, or ``None`` in case of an unknown serializer
-        :rtype: openapi.Schema or openapi.SchemaRef
         """
         return self.probe_inspectors(
-            self.field_inspectors, 'get_schema', serializer, {'field_inspectors': self.field_inspectors}
+            self.field_inspectors,
+            "get_schema",
+            serializer,
+            {"field_inspectors": self.field_inspectors},
         )
 
-    def serializer_to_parameters(self, serializer, in_):
+    def serializer_to_parameters(
+        self, serializer: serializers.BaseSerializer, in_: str
+    ) -> List[openapi.Parameter]:
         """Convert a serializer to a possibly empty list of :class:`.Parameter`\\ s.
 
         :param serializers.BaseSerializer serializer: the ``Serializer`` instance
         :param str in_: the location of the parameters, one of the `openapi.IN_*` constants
-        :rtype: list[openapi.Parameter]
         """
-        return self.probe_inspectors(
-            self.field_inspectors, 'get_request_parameters', serializer, {'field_inspectors': self.field_inspectors},
-            in_=in_
-        ) or []
+        return (
+            self.probe_inspectors(
+                self.field_inspectors,
+                "get_request_parameters",
+                serializer,
+                {"field_inspectors": self.field_inspectors},
+                in_=in_,
+            )
+            or []
+        )
 
-    def get_paginated_response(self, response_schema):
+    def get_paginated_response(self, response_schema) -> openapi.Schema:
         """Add appropriate paging fields to a response :class:`.Schema`.
 
         :param openapi.Schema response_schema: the response schema that must be paged.
         :returns: the paginated response class:`.Schema`, or ``None`` in case of an unknown pagination scheme
-        :rtype: openapi.Schema
         """
-        return self.probe_inspectors(self.paginator_inspectors, 'get_paginated_response',
-                                     getattr(self.view, 'paginator'), response_schema=response_schema)
+        return self.probe_inspectors(
+            self.paginator_inspectors,
+            "get_paginated_response",
+            getattr(self.view, "paginator"),
+            response_schema=response_schema,
+        )

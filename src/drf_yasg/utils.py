@@ -1,39 +1,76 @@
+from __future__ import annotations
 import inspect
 import logging
 import sys
+from typing import TYPE_CHECKING
 import textwrap
 from collections import OrderedDict
 from decimal import Decimal
-
 from django.db import models
 from django.utils.encoding import force_str
 from rest_framework import serializers, status
-from rest_framework.mixins import DestroyModelMixin, ListModelMixin, RetrieveModelMixin, UpdateModelMixin
+from rest_framework.mixins import (
+    DestroyModelMixin,
+    ListModelMixin,
+    RetrieveModelMixin,
+    UpdateModelMixin,
+)
 from rest_framework.parsers import FileUploadParser
 from rest_framework.request import is_form_media_type
+from rest_framework.serializers import Serializer
 from rest_framework.settings import api_settings as rest_framework_settings
 from rest_framework.utils import encoders, json
 from rest_framework.views import APIView
 
+
+if TYPE_CHECKING:
+    from typing import Optional, List, Union, Dict, Any, Type, Tuple
+    from drf_yasg.inspectors import (
+        SwaggerAutoSchema,
+        FieldInspector,
+        FilterInspector,
+        PaginatorInspector,
+    )
+    from drf_yasg.openapi import SchemaRef, Schema, Parameter, Response
 from .app_settings import swagger_settings
+
 
 logger = logging.getLogger(__name__)
 
 
-class no_body(object):
+class no_body:
     """Used as a sentinel value to forcibly remove the body of a request via :func:`.swagger_auto_schema`."""
+
     pass
 
 
-class unset(object):
+class unset:
     """Used as a sentinel value for function parameters not set by the caller where ``None`` would be a valid value."""
+
     pass
 
 
-def swagger_auto_schema(method=None, methods=None, auto_schema=unset, request_body=None, query_serializer=None,
-                        manual_parameters=None, operation_id=None, operation_description=None, operation_summary=None,
-                        security=None, deprecated=None, responses=None, field_inspectors=None, filter_inspectors=None,
-                        paginator_inspectors=None, tags=None, **extra_overrides):
+def swagger_auto_schema(
+    method: Optional[str] = None,
+    methods: Optional[List[str]] = None,
+    auto_schema: Union[SwaggerAutoSchema, unset] = unset,
+    request_body: Optional[Union[Schema, SchemaRef, Serializer, no_body]] = None,
+    query_serializer: Optional[serializers.Serializer] = None,
+    manual_parameters: Optional[List[Parameter]] = None,
+    operation_id: Optional[str] = None,
+    operation_description: Optional[str] = None,
+    operation_summary: Optional[str] = None,
+    security: Optional[List[Dict]] = None,
+    deprecated: Optional[bool] = None,
+    responses: Optional[
+        Dict[str, Union[Schema, SchemaRef, Response, str, Serializer]]
+    ] = None,
+    field_inspectors: Optional[List[FieldInspector]] = None,
+    filter_inspectors: Optional[List[FilterInspector]] = None,
+    paginator_inspectors: Optional[List[PaginatorInspector]] = None,
+    tags: Optional[List[str]] = None,
+    **extra_overrides
+):
     """Decorate a view method to customize the :class:`.Operation` object generated from it.
 
     `method` and `methods` are mutually exclusive and must only be present when decorating a view method that accepts
@@ -111,78 +148,104 @@ def swagger_auto_schema(method=None, methods=None, auto_schema=unset, request_bo
     """
 
     def decorator(view_method):
-        assert not any(hm in extra_overrides for hm in APIView.http_method_names), "HTTP method names not allowed here"
+        assert not any(
+            hm in extra_overrides for hm in APIView.http_method_names
+        ), "HTTP method names not allowed here"
         data = {
-            'request_body': request_body,
-            'query_serializer': query_serializer,
-            'manual_parameters': manual_parameters,
-            'operation_id': operation_id,
-            'operation_summary': operation_summary,
-            'deprecated': deprecated,
-            'operation_description': operation_description,
-            'security': security,
-            'responses': responses,
-            'filter_inspectors': list(filter_inspectors) if filter_inspectors else None,
-            'paginator_inspectors': list(paginator_inspectors) if paginator_inspectors else None,
-            'field_inspectors': list(field_inspectors) if field_inspectors else None,
-            'tags': list(tags) if tags else None,
+            "request_body": request_body,
+            "query_serializer": query_serializer,
+            "manual_parameters": manual_parameters,
+            "operation_id": operation_id,
+            "operation_summary": operation_summary,
+            "deprecated": deprecated,
+            "operation_description": operation_description,
+            "security": security,
+            "responses": responses,
+            "filter_inspectors": list(filter_inspectors) if filter_inspectors else None,
+            "paginator_inspectors": list(paginator_inspectors)
+            if paginator_inspectors
+            else None,
+            "field_inspectors": list(field_inspectors) if field_inspectors else None,
+            "tags": list(tags) if tags else None,
         }
         data = filter_none(data)
         if auto_schema is not unset:
-            data['auto_schema'] = auto_schema
+            data["auto_schema"] = auto_schema
         data.update(extra_overrides)
         if not data:  # pragma: no cover
             # no overrides to set, no use in doing more work
             return view_method
 
         # if the method is an @action, it will have a bind_to_methods attribute, or a mapping attribute for drf>3.8
-        bind_to_methods = getattr(view_method, 'bind_to_methods', [])
-        mapping = getattr(view_method, 'mapping', {})
-        mapping_methods = [mth for mth, name in mapping.items() if name == view_method.__name__]
+        bind_to_methods = getattr(view_method, "bind_to_methods", [])
+        mapping = getattr(view_method, "mapping", {})
+        mapping_methods = [
+            mth for mth, name in mapping.items() if name == view_method.__name__
+        ]
         action_http_methods = bind_to_methods + mapping_methods
 
         # if the method is actually a function based view (@api_view), it will have a 'cls' attribute
-        view_cls = getattr(view_method, 'cls', None)
-        api_view_http_methods = [m for m in getattr(view_cls, 'http_method_names', []) if hasattr(view_cls, m)]
+        view_cls = getattr(view_method, "cls", None)
+        api_view_http_methods = [
+            m
+            for m in getattr(view_cls, "http_method_names", [])
+            if hasattr(view_cls, m)
+        ]
 
         available_http_methods = api_view_http_methods + action_http_methods
-        existing_data = getattr(view_method, '_swagger_auto_schema', {})
+        existing_data = getattr(view_method, "_swagger_auto_schema", {})
 
         _methods = methods
         if methods or method:
-            assert available_http_methods, "`method` or `methods` can only be specified on @action or @api_view views"
+            assert (
+                available_http_methods
+            ), "`method` or `methods` can only be specified on @action or @api_view views"
             assert bool(methods) != bool(method), "specify either method or methods"
-            assert not isinstance(methods, str), "`methods` expects to receive a list of methods;" \
-                                                 " use `method` for a single argument"
+            assert not isinstance(methods, str), (
+                "`methods` expects to receive a list of methods;"
+                " use `method` for a single argument"
+            )
             if method:
                 _methods = [method.lower()]
             else:
                 _methods = [mth.lower() for mth in methods]
-            assert all(mth in available_http_methods for mth in _methods), "http method not bound to view"
-            assert not any(mth in existing_data for mth in _methods), "http method defined multiple times"
+            assert all(
+                mth in available_http_methods for mth in _methods
+            ), "http method not bound to view"
+            assert not any(
+                mth in existing_data for mth in _methods
+            ), "http method defined multiple times"
 
         if available_http_methods:
             # action or api_view
-            assert bool(api_view_http_methods) != bool(action_http_methods), "this should never happen"
+            assert bool(api_view_http_methods) != bool(
+                action_http_methods
+            ), "this should never happen"
 
             if len(available_http_methods) > 1:
-                assert _methods, \
-                    "on multi-method api_view or action, you must specify " \
+                assert _methods, (
+                    "on multi-method api_view or action, you must specify "
                     "swagger_auto_schema on a per-method basis using one of the `method` or `methods` arguments"
+                )
             else:
                 # for a single-method view we assume that single method as the decorator target
                 _methods = _methods or available_http_methods
 
-            assert not any(hasattr(getattr(view_cls, mth, None), '_swagger_auto_schema') for mth in _methods), \
-                "swagger_auto_schema applied twice to method"
-            assert not any(mth in existing_data for mth in _methods), "swagger_auto_schema applied twice to method"
+            assert not any(
+                hasattr(getattr(view_cls, mth, None), "_swagger_auto_schema")
+                for mth in _methods
+            ), "swagger_auto_schema applied twice to method"
+            assert not any(
+                mth in existing_data for mth in _methods
+            ), "swagger_auto_schema applied twice to method"
             existing_data.update((mth.lower(), data) for mth in _methods)
             view_method._swagger_auto_schema = existing_data
         else:
-            assert not _methods, \
-                "the methods argument should only be specified when decorating an action; " \
-                "you should also ensure that you put the swagger_auto_schema decorator " \
+            assert not _methods, (
+                "the methods argument should only be specified when decorating an action; "
+                "you should also ensure that you put the swagger_auto_schema decorator "
                 "AFTER (above) the _route decorator"
+            )
             assert not existing_data, "swagger_auto_schema applied twice to method"
             view_method._swagger_auto_schema = data
 
@@ -191,7 +254,9 @@ def swagger_auto_schema(method=None, methods=None, auto_schema=unset, request_bo
     return decorator
 
 
-def swagger_serializer_method(serializer_or_field):
+def swagger_serializer_method(
+    serializer_or_field: Union[serializers.Field, serializers.Serializer]
+):
     """
     Decorates the method of a serializers.SerializerMethodField
     to hint as to how Swagger should be generated for this field.
@@ -208,23 +273,26 @@ def swagger_serializer_method(serializer_or_field):
     return decorator
 
 
-def is_list_view(path, method, view):
+def is_list_view(path: str, method: str, view: APIView) -> bool:
     """Check if the given path/method appears to represent a list view (as opposed to a detail/instance view).
 
     :param str path: view path
     :param str method: http method
     :param APIView view: target view
-    :rtype: bool
     """
     # for ViewSets, it could be the default 'list' action, or an @action(detail=False)
-    action = getattr(view, 'action', '')
+    action = getattr(view, "action", "")
     method = getattr(view, action, None) or method
-    detail = getattr(method, 'detail', None)
-    suffix = getattr(view, 'suffix', None)
-    if action in ('list', 'create') or detail is False or suffix == 'List':
+    detail = getattr(method, "detail", None)
+    suffix = getattr(view, "suffix", None)
+    if action in ("list", "create") or detail is False or suffix == "List":
         return True
 
-    if action in ('retrieve', 'update', 'partial_update', 'destroy') or detail is True or suffix == 'Instance':
+    if (
+        action in ("retrieve", "update", "partial_update", "destroy")
+        or detail is True
+        or suffix == "Instance"
+    ):
         # a detail action is surely not a list route
         return False
 
@@ -236,24 +304,26 @@ def is_list_view(path, method, view):
         return False
 
     # if the last component in the path is parameterized it's probably not a list view
-    path_components = path.strip('/').split('/')
-    if path_components and '{' in path_components[-1]:
+    path_components = path.strip("/").split("/")
+    if path_components and "{" in path_components[-1]:
         return False
 
     # otherwise assume it's a list view
     return True
 
 
-def guess_response_status(method):
-    if method == 'post':
+def guess_response_status(method: str) -> int:
+    if method == "post":
         return status.HTTP_201_CREATED
-    elif method == 'delete':
+    elif method == "delete":
         return status.HTTP_204_NO_CONTENT
     else:
         return status.HTTP_200_OK
 
 
-def param_list_to_odict(parameters):
+def param_list_to_odict(
+    parameters: List[Parameter]
+) -> Dict[Tuple[str, str], Parameter]:
     """Transform a list of :class:`.Parameter` objects into an ``OrderedDict`` keyed on the ``(name, in_)`` tuple of
     each parameter.
 
@@ -261,14 +331,15 @@ def param_list_to_odict(parameters):
 
     :param list[drf_yasg.openapi.Parameter] parameters: the list of parameters
     :return: `parameters` keyed by ``(name, in_)``
-    :rtype: dict[(str,str),drf_yasg.openapi.Parameter]
     """
     result = OrderedDict(((param.name, param.in_), param) for param in parameters)
     assert len(result) == len(parameters), "duplicate Parameters found"
     return result
 
 
-def merge_params(parameters, overrides):
+def merge_params(
+    parameters: List[Parameter], overrides: List[Parameter]
+) -> List[Parameter]:
     """Merge `overrides` into `parameters`. This is the same as appending `overrides` to `parameters`, but any element
     of `parameters` whose ``(name, in_)`` tuple collides with an element in `overrides` is replaced by it.
 
@@ -277,14 +348,15 @@ def merge_params(parameters, overrides):
     :param list[drf_yasg.openapi.Parameter] parameters: initial parameters
     :param list[drf_yasg.openapi.Parameter] overrides: overriding parameters
     :return: merged list
-    :rtype: list[drf_yasg.openapi.Parameter]
     """
     parameters = param_list_to_odict(parameters)
     parameters.update(param_list_to_odict(overrides))
     return list(parameters.values())
 
 
-def filter_none(obj):
+def filter_none(
+    obj: Optional[Union[dict, list, tuple]]
+) -> Optional[Union[dict, list, tuple]]:
     """Remove ``None`` values from tuples, lists or dictionaries. Return other objects as-is.
 
     :param obj: the object
@@ -294,7 +366,9 @@ def filter_none(obj):
         return None
     new_obj = None
     if isinstance(obj, dict):
-        new_obj = type(obj)((k, v) for k, v in obj.items() if k is not None and v is not None)
+        new_obj = type(obj)(
+            (k, v) for k, v in obj.items() if k is not None and v is not None
+        )
     if isinstance(obj, (list, tuple)):
         new_obj = type(obj)(v for v in obj if v is not None)
     if new_obj is not None and len(new_obj) != len(obj):
@@ -302,7 +376,9 @@ def filter_none(obj):
     return obj
 
 
-def force_serializer_instance(serializer):
+def force_serializer_instance(
+    serializer: Union[serializers.BaseSerializer, Type[serializers.BaseSerializer]]
+) -> serializers.BaseSerializer:
     """Force `serializer` into a ``Serializer`` instance. If it is not a ``Serializer`` class or instance, raises
     an assertion error.
 
@@ -312,35 +388,45 @@ def force_serializer_instance(serializer):
     :rtype: serializers.BaseSerializer
     """
     if inspect.isclass(serializer):
-        assert issubclass(serializer, serializers.BaseSerializer), "Serializer required, not %s" % serializer.__name__
+        assert issubclass(serializer, serializers.BaseSerializer), (
+            "Serializer required, not %s" % serializer.__name__
+        )
         return serializer()
 
-    assert isinstance(serializer, serializers.BaseSerializer), \
+    assert isinstance(serializer, serializers.BaseSerializer), (
         "Serializer class or instance required, not %s" % type(serializer).__name__
+    )
     return serializer
 
 
-def get_serializer_class(serializer):
+def get_serializer_class(
+    serializer: Union[serializers.BaseSerializer, Type[serializers.BaseSerializer]]
+) -> Type[serializers.BaseSerializer]:
     """Given a ``Serializer`` class or intance, return the ``Serializer`` class. If `serializer` is not a ``Serializer``
     class or instance, raises an assertion error.
 
     :param serializer: serializer class or instance, or ``None``
     :return: serializer class
-    :rtype: type[serializers.BaseSerializer]
     """
     if serializer is None:
         return None
 
     if inspect.isclass(serializer):
-        assert issubclass(serializer, serializers.BaseSerializer), "Serializer required, not %s" % serializer.__name__
+        assert issubclass(serializer, serializers.BaseSerializer), (
+            "Serializer required, not %s" % serializer.__name__
+        )
         return serializer
 
-    assert isinstance(serializer, serializers.BaseSerializer), \
+    assert isinstance(serializer, serializers.BaseSerializer), (
         "Serializer class or instance required, not %s" % type(serializer).__name__
+    )
     return type(serializer)
 
 
-def get_object_classes(classes_or_instances, expected_base_class=None):
+def get_object_classes(
+    classes_or_instances: Union[object, Type],
+    expected_base_class: Optional[Type] = None,
+) -> List[Type]:
     """Given a list of instances or class objects, return the list of their classes.
 
     :param classes_or_instances: mixed list to parse
@@ -348,7 +434,6 @@ def get_object_classes(classes_or_instances, expected_base_class=None):
     :param expected_base_class: if given, only subclasses or instances of this type will be returned
     :type expected_base_class: type
     :return: list of classes
-    :rtype: list
     """
     classes_or_instances = classes_or_instances or []
     result = []
@@ -363,7 +448,7 @@ def get_object_classes(classes_or_instances, expected_base_class=None):
     return result
 
 
-def get_consumes(parser_classes):
+def get_consumes(parser_classes: List[Union[object, Type]]) -> List[str]:
     """Extract ``consumes`` MIME types from a list of parser classes.
 
     :param list parser_classes: parser classes
@@ -372,9 +457,13 @@ def get_consumes(parser_classes):
     :rtype: list[str]
     """
     parser_classes = get_object_classes(parser_classes)
-    parser_classes = [pc for pc in parser_classes if not issubclass(pc, FileUploadParser)]
+    parser_classes = [
+        pc for pc in parser_classes if not issubclass(pc, FileUploadParser)
+    ]
     media_types = [parser.media_type for parser in parser_classes or []]
-    non_form_media_types = [encoding for encoding in media_types if not is_form_media_type(encoding)]
+    non_form_media_types = [
+        encoding for encoding in media_types if not is_form_media_type(encoding)
+    ]
     # Because some data to parse could be nested array and are not supported by form media type like multipart/form-data,
     # we must be sure to have explicit form media types **only**.
     if len(non_form_media_types) == 0:
@@ -385,7 +474,7 @@ def get_consumes(parser_classes):
         return non_form_media_types
 
 
-def get_produces(renderer_classes):
+def get_produces(renderer_classes: List[Union[object, Type]]) -> List[str]:
     """Extract ``produces`` MIME types from a list of renderer classes.
 
     :param list renderer_classes: renderer classes
@@ -395,44 +484,60 @@ def get_produces(renderer_classes):
     """
     renderer_classes = get_object_classes(renderer_classes)
     media_types = [renderer.media_type for renderer in renderer_classes or []]
-    media_types = [encoding for encoding in media_types
-                   if not any(excluded in encoding for excluded in swagger_settings.EXCLUDED_MEDIA_TYPES)]
+    media_types = [
+        encoding
+        for encoding in media_types
+        if not any(
+            excluded in encoding for excluded in swagger_settings.EXCLUDED_MEDIA_TYPES
+        )
+    ]
     return media_types
 
 
-def decimal_as_float(field):
+def decimal_as_float(field: serializers.Field) -> bool:
     """Returns true if ``field`` is a django-rest-framework DecimalField and its ``coerce_to_string`` attribute or the
     ``COERCE_DECIMAL_TO_STRING`` setting is set to ``False``.
 
     :rtype: bool
     """
-    if isinstance(field, serializers.DecimalField) or isinstance(field, models.DecimalField):
-        return not getattr(field, 'coerce_to_string', rest_framework_settings.COERCE_DECIMAL_TO_STRING)
+    if isinstance(field, serializers.DecimalField) or isinstance(
+        field, models.DecimalField
+    ):
+        return not getattr(
+            field, "coerce_to_string", rest_framework_settings.COERCE_DECIMAL_TO_STRING
+        )
     return False
 
 
-def get_serializer_ref_name(serializer):
+def get_serializer_ref_name(serializer: serializers.Serializer):
     """Get serializer's ref_name (or None for ModelSerializer if it is named 'NestedSerializer')
 
     :param serializer: Serializer instance
     :return: Serializer's ``ref_name`` or ``None`` for inline serializer
     :rtype: str or None
     """
-    serializer_meta = getattr(serializer, 'Meta', None)
+    serializer_meta = getattr(serializer, "Meta", None)
     serializer_name = type(serializer).__name__
-    if hasattr(serializer_meta, 'ref_name'):
+    if hasattr(serializer_meta, "ref_name"):
         ref_name = serializer_meta.ref_name
-    elif serializer_name == 'NestedSerializer' and isinstance(serializer, serializers.ModelSerializer):
-        logger.debug("Forcing inline output for ModelSerializer named 'NestedSerializer':\n" + str(serializer))
+    elif serializer_name == "NestedSerializer" and isinstance(
+        serializer, serializers.ModelSerializer
+    ):
+        logger.debug(
+            "Forcing inline output for ModelSerializer named 'NestedSerializer':\n"
+            + str(serializer)
+        )
         ref_name = None
     else:
         ref_name = serializer_name
-        if ref_name.endswith('Serializer'):
-            ref_name = ref_name[:-len('Serializer')]
+        if ref_name.endswith("Serializer"):
+            ref_name = ref_name[: -len("Serializer")]
     return ref_name
 
 
-def force_real_str(s, encoding='utf-8', strings_only=False, errors='strict'):
+def force_real_str(
+    s: Union[str, bytes], encoding="utf-8", strings_only=False, errors="strict"
+) -> str:
     """
     Force `s` into a ``str`` instance.
 
@@ -441,7 +546,7 @@ def force_real_str(s, encoding='utf-8', strings_only=False, errors='strict'):
     if s is not None:
         s = force_str(s, encoding, strings_only, errors)
         if type(s) != str:
-            s = '' + s
+            s = "" + s
 
         # Remove common indentation to get the correct Markdown rendering
         s = textwrap.dedent(s)
@@ -449,7 +554,9 @@ def force_real_str(s, encoding='utf-8', strings_only=False, errors='strict'):
     return s
 
 
-def field_value_to_representation(field, value):
+def field_value_to_representation(
+    field: serializers.Field, value: Any
+) -> Union[bool, str, int, float, List, Dict, None]:
     """Convert a python value related to a field (default, choices, etc.) into its OpenAPI-compatible representation.
 
     :param serializers.Field field: field associated with the value
@@ -468,41 +575,48 @@ def field_value_to_representation(field, value):
     return json.loads(json.dumps(value, cls=encoders.JSONEncoder))
 
 
-def get_field_default(field):
+def get_field_default(field: serializers.Field) -> Any:
     """
     Get the default value for a field, converted to a JSON-compatible value while properly handling callables.
 
     :param field: field instance
     :return: default value
     """
-    default = getattr(field, 'default', serializers.empty)
+    default = getattr(field, "default", serializers.empty)
     if default is not serializers.empty:
         if callable(default):
             try:
-                if hasattr(default, 'set_context'):
+                if hasattr(default, "set_context"):
                     default.set_context(field)
                 default = default()
             except Exception:  # pragma: no cover
-                logger.warning("default for %s is callable but it raised an exception when "
-                               "called; 'default' will not be set on schema", field, exc_info=True)
+                logger.warning(
+                    "default for %s is callable but it raised an exception when "
+                    "called; 'default' will not be set on schema",
+                    field,
+                    exc_info=True,
+                )
                 default = serializers.empty
 
         if default is not serializers.empty and default is not None:
             try:
                 default = field_value_to_representation(field, default)
             except Exception:  # pragma: no cover
-                logger.warning("'default' on schema for %s will not be set because "
-                               "to_representation raised an exception", field, exc_info=True)
+                logger.warning(
+                    "'default' on schema for %s will not be set because "
+                    "to_representation raised an exception",
+                    field,
+                    exc_info=True,
+                )
                 default = serializers.empty
 
     return default
 
 
-def dict_has_ordered_keys(obj):
+def dict_has_ordered_keys(obj: Dict) -> bool:
     """Check if a given object is a dict that maintains insertion order.
 
     :param obj: the dict object to check
-    :rtype: bool
     """
     if sys.version_info >= (3, 7):
         # the Python 3.7 language spec says that dict must maintain insertion order.

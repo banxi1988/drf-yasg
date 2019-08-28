@@ -1,19 +1,21 @@
-from django.http import HttpResponse
+from typing import Callable
+
+from django.http import HttpResponse, HttpRequest
 
 from .codecs import _OpenAPICodec
 from .errors import SwaggerValidationError
 
 
-class SwaggerExceptionMiddleware(object):
-    def __init__(self, get_response):
+class SwaggerExceptionMiddleware:
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
         self.get_response = get_response
 
-    def __call__(self, request):
+    def __call__(self, request: HttpRequest):
         return self.get_response(request)
 
-    def process_exception(self, request, exception):
+    def process_exception(self, request: HttpRequest, exception: Exception):
         if isinstance(exception, SwaggerValidationError):
-            err = {'errors': exception.errors, 'message': str(exception)}
+            err = {"errors": exception.errors, "message": str(exception)}
             codec = exception.source_codec
             if isinstance(codec, _OpenAPICodec):
                 err = codec.encode_error(err)

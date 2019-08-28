@@ -8,3 +8,4 @@ packaging
 
 djangorestframework>=3.8
 Django>=1.11.7
+typing_extensions>=3.7.4

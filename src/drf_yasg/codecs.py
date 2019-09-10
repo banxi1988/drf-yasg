@@ -126,12 +126,12 @@ class OpenAPICodecJson(_OpenAPICodec):
 
         :rtype: str"""
         if self.pretty:
-            out = json.dumps(spec, indent=4, separators=(",", ": "))
+            out = json.dumps(spec, indent=4, separators=(",", ": "), ensure_ascii=False)
             if out[-1] != "\n":
                 out += "\n"
             return out
         else:
-            return json.dumps(spec)
+            return json.dumps(spec, ensure_ascii=False)
 
 
 YAML_MAP_TAG = u"tag:yaml.org,2002:map"
@@ -212,6 +212,7 @@ def yaml_sane_dump(data: Dict, binary: bool) -> Union[str, bytes]:
     return yaml.dump(
         data,
         Dumper=SaneYamlDumper,
+        allow_unicode=True,
         default_flow_style=False,
         encoding="utf-8" if binary else None,
     )

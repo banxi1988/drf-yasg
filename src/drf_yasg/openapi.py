@@ -23,6 +23,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 TYPE_OBJECT = "object"  #:
+TYPE_ENUM = "x-enum"  #: 增加 enum 作为单独的类型,更方便前端代码的生成及交互
 TYPE_STRING = "string"  #:
 TYPE_NUMBER = "number"  #:
 TYPE_INTEGER = "integer"  #:

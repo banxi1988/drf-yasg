@@ -29,6 +29,7 @@ SWAGGER_DEFAULTS = {
     "DEFAULT_INFO": None,
     "DEFAULT_API_URL": None,
     "USE_SESSION_AUTH": True,
+    "ENABLE_SPEC_VALIDATOR": False,
     "SECURITY_DEFINITIONS": {"Basic": {"type": "basic"}},
     "SECURITY_REQUIREMENTS": None,
     "LOGIN_URL": getattr(settings, "LOGIN_URL", None),

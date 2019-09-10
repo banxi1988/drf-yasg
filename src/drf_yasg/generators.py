@@ -68,7 +68,7 @@ class EndpointEnumerator(_EndpointEnumerator):
         app_name: str = "",
         namespace: str = "",
         url_name: Optional[str] = None,
-    ):
+    ) -> bool:
         if not super(EndpointEnumerator, self).should_include_endpoint(path, callback):
             return False
 
@@ -85,13 +85,12 @@ class EndpointEnumerator(_EndpointEnumerator):
 
         return True
 
-    def replace_version(self, path: str, callback: object):
+    def replace_version(self, path: str, callback: object) -> str:
         """If ``request.version`` is not ``None`` and `callback` uses ``URLPathVersioning``, this function replaces
         the ``version`` parameter in `path` with the actual version.
 
         :param str path: the templated path
         :param callback: the view callback
-        :rtype: str
         """
         versioning_class = getattr(callback.cls, "versioning_class", None)
         if versioning_class is not None and issubclass(
@@ -112,11 +111,11 @@ class EndpointEnumerator(_EndpointEnumerator):
 
     def get_api_endpoints(
         self,
-        patterns=None,
-        prefix="",
-        app_name=None,
-        namespace=None,
-        ignored_endpoints=None,
+        patterns: List[str] = None,
+        prefix: str = "",
+        app_name: str = None,
+        namespace: str = None,
+        ignored_endpoints: Optional[List[str]] = None,
     ):
         """
         Return a list of all available API endpoints by inspecting the URL conf.
@@ -381,7 +380,7 @@ class OpenAPISchemaGenerator:
 
     def get_endpoints(
         self, request: Optional[Request]
-    ) -> Dict[str, Tuple[Type, List[Tuple[str, APIView]]]]:
+    ) -> Dict[str, Tuple[Type[APIView], List[Tuple[str, APIView]]]]:
         """Iterate over all the registered endpoints in the API and return a fake view with the right parameters.
 
         :param request: request to bind to the endpoint views

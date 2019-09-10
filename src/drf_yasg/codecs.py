@@ -10,6 +10,7 @@ from collections import OrderedDict
 from coreapi.compat import force_bytes
 from ruamel import yaml
 
+from drf_yasg.app_settings import swagger_settings
 from six import binary_type, raise_from, text_type
 
 from . import openapi
@@ -68,21 +69,22 @@ class _OpenAPICodec:
             raise TypeError("Expected a `openapi.Swagger` instance")
 
         spec = self.generate_swagger_object(document)
-        errors = {}
-        for validator in self.validators:
-            try:
-                # validate a deepcopy of the spec to prevent the validator from messing with it
-                # for example, swagger_spec_validator adds an x-scope property to all references
-                VALIDATORS[validator](copy.deepcopy(spec))
-            except SwaggerValidationError as e:
-                errors[validator] = str(e)
+        if swagger_settings.ENABLE_SPEC_VALIDATOR:
+            errors = {}
+            for validator in self.validators:
+                try:
+                    # validate a deepcopy of the spec to prevent the validator from messing with it
+                    # for example, swagger_spec_validator adds an x-scope property to all references
+                    VALIDATORS[validator](copy.deepcopy(spec))
+                except SwaggerValidationError as e:
+                    errors[validator] = str(e)
 
-        if errors:
-            exc = SwaggerValidationError(
-                "spec validation failed: {}".format(errors), errors, spec, self
-            )
-            logger.warning(str(exc))
-            raise exc
+            if errors:
+                exc = SwaggerValidationError(
+                    "spec validation failed: {}".format(errors), errors, spec, self
+                )
+                logger.warning(str(exc))
+                raise exc
 
         return force_bytes(self._dump_dict(spec))
 

@@ -3,6 +3,17 @@ Changelog
 #########
 
 **********
+**2.0.0**
+**********
+
+*Release date: Dec 06, 2019*
+
+- **新增:** 增加 `TYPE_ENUM` 用来自定义增加 x-enum 类型,后面将支持 Django 3 的 TextChoices
+- **新增:** 增加 `ENABLE_SPEC_VALIDATOR` 选项,默认禁用 spec validation. 因为自定义的 x-enum 通不过
+- **变更:** 默认允许输出Unicode 字面量
+- **优化:** 源代码增加类型声明
+
+**********
 **1.17.0**
 **********
 

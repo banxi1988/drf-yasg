@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from __future__ import print_function
 
 import io
 import os
@@ -19,22 +18,20 @@ with io.open('README.rst', encoding='utf-8') as readme:
 requirements = read_req('base.txt')
 requirements_validation = read_req('validation.txt')
 
-py3_supported_range = (5, 8)
+py3_supported_range = (7, 8)
 
 # convert inclusive range to exclusive range
 py3_supported_range = (py3_supported_range[0], py3_supported_range[1] + 1)
-python_requires = ", ".join([">=2.7"] + ["!=3.{}.*".format(v) for v in range(0, py3_supported_range[0])])
+python_requires = ">=3.6"
 python_classifiers = [
     'Programming Language :: Python',
-    'Programming Language :: Python :: 2',
-    'Programming Language :: Python :: 2.7',
     'Programming Language :: Python :: 3',
 ] + ['Programming Language :: Python :: 3.{}'.format(v) for v in range(*py3_supported_range)]
 
 
 def drf_yasg_setup(**kwargs):
     setup(
-        name='drf-yasg',
+        name='drf-yasg-edge',
         packages=find_packages('src'),
         package_dir={'': 'src'},
         include_package_data=True,
@@ -45,9 +42,9 @@ def drf_yasg_setup(**kwargs):
         license='BSD License',
         description='Automated generation of real Swagger/OpenAPI 2.0 schemas from Django Rest Framework code.',
         long_description=description,
-        url='https://github.com/axnsan12/drf-yasg',
+        url='https://github.com/banxi1988/drf-yasg',
         author='Cristi V.',
-        author_email='cristi@cvjd.me',
+        author_email='cristi@cvjd.me, banxi1988@gmail.com',
         keywords='drf django django-rest-framework schema swagger openapi codegen swagger-codegen '
                  'documentation drf-yasg django-rest-swagger drf-openapi',
         python_requires=python_requires,
@@ -58,10 +55,8 @@ def drf_yasg_setup(**kwargs):
             'Operating System :: OS Independent',
             'Environment :: Web Environment',
             'Framework :: Django',
-            'Framework :: Django :: 1.11',
-            'Framework :: Django :: 2.0',
-            'Framework :: Django :: 2.1',
             'Framework :: Django :: 2.2',
+            'Framework :: Django :: 3.0',
             'Topic :: Documentation',
             'Topic :: Software Development :: Code Generators',
         ] + python_classifiers,

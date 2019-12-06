@@ -1,21 +1,32 @@
 .. role:: python(code)
    :language: python
 
-########################################
-drf-yasg - Yet another Swagger generator
-########################################
+##############################################
+drf-yasg-edge - Yet another Swagger generator
+##############################################
 
 |travis| |nbsp| |codecov| |nbsp| |rtd-badge| |nbsp| |pypi-version|
 
 |bmac-button|
 
+NOTE: this is a modified version based on  drf-yasg for myself usage!
+
+*************
+New Features
+*************
+
+- **新增:** 增加 `TYPE_ENUM` 用来自定义增加 x-enum 类型,后面将支持 Django 3 的 TextChoices
+- **新增:** 增加 `ENABLE_SPEC_VALIDATOR` 选项,默认禁用 spec validation. 因为自定义的 x-enum 通不过
+- **变更:** 默认允许输出Unicode 字面量
+- **优化:** 源代码增加类型声明
+
 Generate **real** Swagger/OpenAPI 2.0 specifications from a Django Rest Framework API.
 
 Compatible with
 
-- **Django Rest Framework**: 3.8, 3.9, 3.10
-- **Django**: 1.11, 2.1, 2.2
-- **Python**: 2.7, 3.5, 3.6, 3.7, 3.8
+- **Django Rest Framework**: 3.10
+- **Django**:  2.2
+- **Python**:  3.7, 3.8
 
 Only the latest patch version of each ``major.minor`` series of Python, Django and Django REST Framework is supported.
 
@@ -26,16 +37,16 @@ through a deprecation cycle of a few minor releases.
 
 Resources:
 
-* **Source**: https://github.com/axnsan12/drf-yasg/
+* **Source**: https://github.com/banxi1988/drf-yasg/
 * **Documentation**: https://drf-yasg.readthedocs.io/
 * **Changelog**: https://drf-yasg.readthedocs.io/en/stable/changelog.html
 * **Live demo**: https://drf-yasg-demo.herokuapp.com/
 
 |heroku-button|
 
-********
+**********
 Features
-********
+**********
 
 - full support for nested Serializers and Schemas
 - response schemas and descriptions
@@ -91,14 +102,14 @@ The preferred instalation method is directly from pypi:
 
 .. code:: console
 
-   pip install -U drf-yasg
+   pip install -U drf-yasg-edge
 
 Additionally, if you want to use the built-in validation mechanisms (see `4. Validation`_), you need to install
 some extra requirements:
 
 .. code:: console
 
-   pip install -U drf-yasg[validation]
+   pip install -U drf-yasg-edge[validation]
 
 .. _readme-quickstart:
 
@@ -295,7 +306,7 @@ For additional usage examples, you can take a look at the test project in the ``
 
 .. code:: console
 
-   $ git clone https://github.com/axnsan12/drf-yasg.git
+   $ git clone https://github.com/banxi1988/drf-yasg.git
    $ cd drf-yasg
    $ virtualenv venv
    $ source venv/bin/activate

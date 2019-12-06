@@ -27,6 +27,7 @@ def test_swagger_yaml(client, validate_schema):
 
 
 def test_exception_middleware(client, swagger_settings, db):
+    swagger_settings['ENABLE_SPEC_VALIDATOR'] = True
     swagger_settings['SECURITY_DEFINITIONS'] = {
         'bad': {
             'bad_attribute': 'should not be accepted'

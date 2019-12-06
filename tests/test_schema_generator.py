@@ -17,7 +17,8 @@ from drf_yasg.codecs import yaml_sane_load
 from drf_yasg.errors import SwaggerGenerationError
 from drf_yasg.generators import OpenAPISchemaGenerator
 from drf_yasg.utils import swagger_auto_schema
-
+from drf_yasg.app_settings import swagger_settings
+from unittest import mock
 try:
     import typing
 except ImportError:
@@ -28,7 +29,7 @@ def test_schema_is_valid(swagger, codec_yaml):
     codec_yaml.encode(swagger)
 
 
-def test_invalid_schema_fails(codec_json, mock_schema_request):
+def test_invalid_schema_fails(swagger_settings, codec_json, mock_schema_request):
     # noinspection PyTypeChecker
     bad_generator = OpenAPISchemaGenerator(
         info=openapi.Info(
@@ -40,6 +41,7 @@ def test_invalid_schema_fails(codec_json, mock_schema_request):
     )
 
     swagger = bad_generator.get_schema(mock_schema_request, True)
+    swagger_settings['ENABLE_SPEC_VALIDATOR'] = True
     with pytest.raises(codecs.SwaggerValidationError):
         codec_json.encode(swagger)
 

@@ -522,6 +522,7 @@ class Parameter(SwaggerDict):
             )
         if schema and isinstance(schema, Schema):
             schema._remove_read_only()
+            schema._remove_write_only()
         if self["in"] == IN_PATH:
             # path parameters must always be required
             assert required is not False, "path parameter cannot be optional"
@@ -552,6 +553,7 @@ class Schema(SwaggerDict):
         items: Optional[Union["Schema", "SchemaRef"]] = None,
         default=None,
         read_only=None,
+        x_write_only=None,
         **extra
     ):
         """Describes a complex object accepted as parameter or returned as a response.
@@ -593,6 +595,10 @@ class Schema(SwaggerDict):
         self.pattern = pattern
         self.items_ = items
         self.read_only = read_only
+        if x_write_only:
+            self.x_write_only = True
+        else:
+            self.x_write_only = None
         self.default = default
         self._insert_extras__()
         if (properties or (additional_properties is not None)) and type != TYPE_OBJECT:
@@ -603,6 +609,11 @@ class Schema(SwaggerDict):
         # readOnly is only valid for Schemas inside another Schema's properties;
         # when placing Schema elsewhere we must take care to remove the readOnly flag
         self.pop("readOnly", "")
+
+    def _remove_write_only(self):
+        # writeOnly is only valid for Schemas inside another Schema's properties;
+        # when placing Schema elsewhere we must take care to remove the writeOnly flag
+        self.pop("x_writeOnly", "")
 
 
 class _Ref(SwaggerDict):
@@ -736,6 +747,7 @@ class Response(SwaggerDict):
         self._insert_extras__()
         if schema and isinstance(schema, Schema):
             schema._remove_read_only()
+            schema._remove_write_only()
 
 
 class ReferenceResolver:

@@ -123,7 +123,10 @@ class InlineSerializerInspector(SerializerInspector):
                 required = []
                 for property_name, child in serializer.fields.items():
                     property_name = self.get_property_name(property_name)
-                    prop_kwargs = {"read_only": bool(child.read_only) or None}
+                    prop_kwargs = {
+                        "read_only": bool(child.read_only) or None,
+                        "x_write_only": bool(child.write_only) or None,
+                    }
                     prop_kwargs = filter_none(prop_kwargs)
 
                     child_schema = self.probe_field_inspectors(
@@ -131,7 +134,7 @@ class InlineSerializerInspector(SerializerInspector):
                     )
                     properties[property_name] = child_schema
 
-                    if child.required and not getattr(child_schema, "read_only", False):
+                    if child.required and ( getattr(child_schema, "read_only", False) or getattr(child_schema, 'write_only',False)):
                         required.append(property_name)
 
                 result = SwaggerType(
@@ -154,6 +157,7 @@ class InlineSerializerInspector(SerializerInspector):
             definitions = self.components.with_scope(openapi.SCHEMA_DEFINITIONS)
             actual_schema = definitions.setdefault(ref_name, make_schema_definition)
             actual_schema._remove_read_only()
+            actual_schema._remove_write_only()
 
             actual_serializer = getattr(actual_schema, "_NP_serializer", None)
             this_serializer = get_serializer_class(field)

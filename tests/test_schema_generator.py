@@ -6,7 +6,6 @@ import pytest
 from django.conf.urls import url
 from django.contrib.postgres import fields as postgres_fields
 from django.db import models
-from django.utils.inspect import get_func_args
 from rest_framework import routers, serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -104,11 +103,7 @@ def test_securiy_requirements(swagger_settings, mock_schema_request):
 
 
 def _basename_or_base_name(basename):
-    # freaking DRF... TODO: remove when dropping support for DRF 3.8
-    if "basename" in get_func_args(routers.BaseRouter.register):
         return {"basename": basename}
-    else:
-        return {"base_name": basename}
 
 
 def test_replaced_serializer():
@@ -302,6 +297,26 @@ def test_nested_choice_in_array_field(choices, field, expected_type):
     assert property_schema == openapi.Schema(
         title="Array", type=expected_type, enum=choices
     )
+
+def test_write_only_field():
+    class TestWriteOnlyFieldSerializer(serializers.Serializer):
+        json = serializers.JSONField(write_only=True)
+
+    class JSONViewSet(viewsets.ModelViewSet):
+        serializer_class = TestWriteOnlyFieldSerializer
+
+    router = routers.DefaultRouter()
+    router.register(r"jsons", JSONViewSet, basename='jsons')
+
+    generator = OpenAPISchemaGenerator(
+        info=openapi.Info(title="Test json field generator", default_version="v1"),
+        patterns=router.urls,
+    )
+
+    swagger = generator.get_schema(None, True)
+    property_schema = swagger["definitions"]["TestWriteOnlyField"]["properties"]["json"]
+    assert property_schema == openapi.Schema(title="Json", x_write_only=True, type=openapi.TYPE_OBJECT)
+
 
 
 def test_json_field():

@@ -6,7 +6,7 @@ from drf_yasg import openapi
 
 def test_vendor_extensions():
     """Any attribute starting with x_ should map to a vendor property of the form x-camelCase"""
-    sd = openapi.SwaggerDict(x_vendor_ext_1='test')
+    sd = openapi.SwaggerDict(x_vendor_ext_1='test',x_write_only=True)
     sd.x_vendor_ext_2 = 'test'
     assert 'x-vendorExt1' in sd
     assert sd.x_vendor_ext_1 == 'test'
@@ -14,6 +14,10 @@ def test_vendor_extensions():
 
     del sd.x_vendor_ext_1
     assert 'x-vendorExt1' not in sd
+
+    assert 'x-writeOnly' in sd
+    assert sd.x_write_only
+    assert sd['x-writeOnly']
 
 
 def test_ref():

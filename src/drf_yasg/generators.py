@@ -8,7 +8,6 @@ from typing import List, Union, Optional, Callable, Dict, Tuple, Type
 import rest_framework
 import uritemplate
 from coreapi.compat import urlparse
-from packaging.version import Version
 from rest_framework import versioning
 from rest_framework.compat import URLPattern, URLResolver, get_original_route
 from rest_framework.request import Request

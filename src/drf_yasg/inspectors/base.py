@@ -393,6 +393,9 @@ class FieldInspector(BaseInspector):
             ):
                 instance_kwargs["x_nullable"] = True
 
+            if 'x_write_only' not in instance_kwargs and field.write_only:
+                instance_kwargs["x_write_only"] = field.write_only
+
             instance_kwargs.update(kwargs)
 
             if existing_object is not None:

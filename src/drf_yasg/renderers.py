@@ -1,6 +1,5 @@
 from typing import Dict
 
-import six
 
 from django.shortcuts import resolve_url
 from django.template.loader import render_to_string
@@ -104,7 +103,7 @@ class _UIRenderer(BaseRenderer):
             return None
 
         args, kwargs = None, None
-        if not isinstance(to, six.string_types):
+        if not isinstance(to, str):
             if len(to) > 2:
                 to, args, kwargs = to
             elif len(to) == 2:

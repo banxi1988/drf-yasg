@@ -2,7 +2,6 @@ from typing import Dict, Optional, List, Tuple, Union, Any, Type, Callable
 
 import six
 
-import collections
 import logging
 import re
 from collections import OrderedDict
@@ -15,10 +14,7 @@ from rest_framework import serializers
 
 from .utils import dict_has_ordered_keys, filter_none, force_real_str
 
-try:
-    from collections import abc as collections_abc
-except ImportError:
-    collections_abc = collections
+from collections import abc
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +143,7 @@ class SwaggerDict(OrderedDict):
             # handle __proxy__ objects from django.utils.functional.lazy
             obj = obj._proxy____cast()
 
-        if isinstance(obj, collections_abc.Mapping):
+        if isinstance(obj, abc.Mapping):
             result = OrderedDict()
             memo[id(obj)] = result
             items = obj.items()
@@ -158,8 +154,8 @@ class SwaggerDict(OrderedDict):
             return result
         elif isinstance(obj, six.string_types):
             return force_real_str(obj)
-        elif isinstance(obj, collections_abc.Iterable) and not isinstance(
-            obj, collections_abc.Iterator
+        elif isinstance(obj, abc.Iterable) and not isinstance(
+            obj, abc.Iterator
         ):
             return type(obj)(SwaggerDict._as_odict(elem, memo) for elem in obj)
 

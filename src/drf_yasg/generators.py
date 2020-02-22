@@ -28,12 +28,8 @@ from .inspectors.field import (
 from .openapi import ReferenceResolver, SwaggerDict, Info
 from .utils import force_real_str, get_consumes, get_produces
 
-if Version(rest_framework.__version__) < Version("3.10"):
-    from rest_framework.schemas.generators import SchemaGenerator
-    from rest_framework.schemas.inspectors import get_pk_description
-else:
-    from rest_framework.schemas import SchemaGenerator
-    from rest_framework.schemas.utils import get_pk_description
+from rest_framework.schemas import SchemaGenerator
+from rest_framework.schemas.utils import get_pk_description
 
 
 logger = logging.getLogger(__name__)

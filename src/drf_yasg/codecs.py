@@ -1,6 +1,5 @@
 from typing import Dict, List, Union, IO
 
-from six import raise_from
 
 import copy
 import json
@@ -11,7 +10,6 @@ from coreapi.compat import force_bytes
 from ruamel import yaml
 
 from drf_yasg.app_settings import swagger_settings
-from six import binary_type, raise_from, text_type
 
 from . import openapi
 from .errors import SwaggerValidationError
@@ -29,7 +27,7 @@ def _validate_flex(spec):
     try:
         validate_flex(spec)
     except ValidationError as ex:
-        raise_from(SwaggerValidationError(str(ex)), ex)
+        raise SwaggerValidationError(str(ex)) from ex
 
 
 def _validate_swagger_spec_validator(spec):
@@ -39,7 +37,7 @@ def _validate_swagger_spec_validator(spec):
     try:
         validate_ssv(spec)
     except SSVErr as ex:
-        raise_from(SwaggerValidationError(str(ex)), ex)
+        raise SwaggerValidationError(str(ex)) from ex
 
 
 #:
@@ -193,8 +191,8 @@ class SaneYamlDumper(yaml.SafeDumper):
         return self.represent_scalar('tag:yaml.org,2002:str', text)
 
 
-SaneYamlDumper.add_representer(binary_type, SaneYamlDumper.represent_text)
-SaneYamlDumper.add_representer(text_type, SaneYamlDumper.represent_text)
+SaneYamlDumper.add_representer(bytes, SaneYamlDumper.represent_text)
+SaneYamlDumper.add_representer(str, SaneYamlDumper.represent_text)
 SaneYamlDumper.add_representer(OrderedDict, SaneYamlDumper.represent_odict)
 SaneYamlDumper.add_multi_representer(OrderedDict, SaneYamlDumper.represent_odict)
 

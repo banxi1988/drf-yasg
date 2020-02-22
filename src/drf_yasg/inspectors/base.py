@@ -4,7 +4,6 @@ from typing import Union, Type, Optional, Any, List, Dict, Tuple, Callable
 from typing_extensions import Literal
 import rest_framework
 from rest_framework import serializers
-from rest_framework.fields import Field
 from rest_framework.pagination import BasePagination
 from rest_framework.parsers import BaseParser
 from rest_framework.renderers import BaseRenderer
